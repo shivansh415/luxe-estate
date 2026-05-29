@@ -17,6 +17,13 @@ export default function LoadingScreen({ isLoaded, realProgress = 0, onComplete }
   const targetRef = useRef(0)
   const counterElRef = useRef(null)
   const progressBarElRef = useRef(null)
+  const mountTimeRef = useRef(null)
+  const isLoadedRef = useRef(false)
+
+  /* Minimum display floor — keeps the preloader on screen for at least
+     this long even on instant cache hits, for smoothness. This is NOT
+     the loading mechanism — it only delays exit AFTER assets are ready. */
+  const MIN_DISPLAY_MS = 1200
 
   // FIX #1: Pipe real progress (0-100) as the pre-loaded target.
   // When isLoaded fires, ramp quickly from current → 100.
@@ -28,6 +35,7 @@ export default function LoadingScreen({ isLoaded, realProgress = 0, onComplete }
   }, [isLoaded, realProgress])
 
   useEffect(() => {
+    isLoadedRef.current = isLoaded
     if (isLoaded) {
       // Finish ramp: 85 → 100 quickly
       targetRef.current = 100
@@ -38,6 +46,34 @@ export default function LoadingScreen({ isLoaded, realProgress = 0, onComplete }
   // Uses ref + direct DOM write — zero React re-renders during animation.
   useEffect(() => {
     let stopped = false
+    let exitTimer = null
+
+    // Capture mount time on first effect run.
+    if (mountTimeRef.current === null) {
+      mountTimeRef.current = performance.now()
+    }
+
+    const scheduleExit = () => {
+      if (stopped || exitTimer) return
+      const elapsed = performance.now() - mountTimeRef.current
+      const remainingMin = Math.max(0, MIN_DISPLAY_MS - elapsed)
+      // Wait for: assets ready AND min display elapsed, then a small hold.
+      const tryExit = () => {
+        exitTimer = null
+        if (stopped) return
+        if (!isLoadedRef.current) {
+          // Assets reported 100% via realProgress but isLoaded prop hasn't
+          // flipped yet — re-check shortly.
+          exitTimer = setTimeout(tryExit, 80)
+          return
+        }
+        // Brief settle hold (cinematic), then dismiss.
+        exitTimer = setTimeout(() => {
+          if (!stopped) setIsVisible(false)
+        }, 800)
+      }
+      exitTimer = setTimeout(tryExit, remainingMin)
+    }
 
     const animate = () => {
       if (stopped) return
@@ -62,13 +98,12 @@ export default function LoadingScreen({ isLoaded, realProgress = 0, onComplete }
         progressBarElRef.current.style.width = `${displayRef.current}%`
       }
 
-      // Self-terminate when settled at 100
+      // Self-terminate when settled at 100. If assets aren't ready yet
+      // OR we haven't passed the minimum display floor, stop the RAF
+      // and defer exit via a setTimeout that re-triggers when ready.
       if (displayNum >= 100 && Math.abs(diff) < 0.5) {
-        // Trigger exit after brief hold
-        setTimeout(() => {
-          if (!stopped) setIsVisible(false)
-        }, 800)
         animFrameRef.current = null
+        scheduleExit()
         return
       }
 
@@ -80,6 +115,7 @@ export default function LoadingScreen({ isLoaded, realProgress = 0, onComplete }
     return () => {
       stopped = true
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+      if (exitTimer) clearTimeout(exitTimer)
     }
   }, [])
 

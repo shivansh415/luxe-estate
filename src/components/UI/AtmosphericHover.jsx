@@ -22,8 +22,12 @@ precision highp float;
 
 uniform float uProgress;
 uniform float uMotion;
+uniform float uTime;
 uniform vec2  uMouse;
 uniform vec2  uResolution;
+uniform sampler2D uReveal;
+uniform float uRevealReady;
+uniform float uRevealAspect;
 
 /* ── Simple 2D hash ── */
 vec2 hash2(vec2 p) {
@@ -46,7 +50,7 @@ float gnoise(vec2 p) {
   );
 }
 
-/* ── FBM: compact static detail, no time input ── */
+/* ── 4-octave fBm ── */
 float fbm(vec2 p) {
   float v = 0.0;
   float a = 0.5;
@@ -59,61 +63,112 @@ float fbm(vec2 p) {
   return v;
 }
 
-float warpedFBM(vec2 p) {
+/* ── Domain-warped fBm — produces cauliflower billows
+       (Immersive-Garden-style atmospheric forms). ── */
+float warpedFBM(vec2 p, float t) {
   vec2 q = vec2(
-    fbm(p + vec2(0.0, 0.0)),
-    fbm(p + vec2(5.2, 1.3))
+    fbm(p + vec2(0.0,  0.0) + t * 0.18),
+    fbm(p + vec2(5.2,  1.3) - t * 0.14)
   );
-
   vec2 r = vec2(
-    fbm(p + 2.4 * q + vec2(1.7, 9.2)),
-    fbm(p + 2.4 * q + vec2(8.3, 2.8))
+    fbm(p + 2.4 * q + vec2(1.7, 9.2) + t * 0.10),
+    fbm(p + 2.4 * q + vec2(8.3, 2.8) - t * 0.08)
   );
-
   return fbm(p + 2.8 * r);
 }
 
 void main() {
   vec2 uv = gl_FragCoord.xy / uResolution;
   float aspect = uResolution.x / uResolution.y;
-
   vec2 auv = vec2(uv.x * aspect, uv.y);
+
+  /* CTA corner anchor (top-right of the canvas) */
   vec2 corner = vec2(aspect, 1.0);
   vec2 fromCorner = auv - corner;
+  float cornerDist = length(fromCorner * vec2(0.92, 1.18));
 
-  float cornerDist = length(fromCorner * vec2(0.9, 1.18));
-  float topEdgeDist = max(1.0 - uv.y, 0.0);
-  float rightEdgeDist = max(1.0 - uv.x, 0.0);
-  float edgeDist = min(topEdgeDist * 1.28, rightEdgeDist * 1.1);
-  float dist = min(cornerDist, edgeDist + 0.22);
-  vec2 mouse = vec2(uMouse.x * aspect, uMouse.y);
-  float mousePull = smoothstep(0.55, 0.0, length((auv - mouse) * vec2(0.85, 1.1)));
-
-  vec2 noiseCoord = auv * 1.85;
-  float warp1 = warpedFBM(noiseCoord);
-  float warp2 = fbm(noiseCoord * 2.7 + vec2(3.1, 7.4));
-  float paperGrain = fbm(noiseCoord * 6.0 + vec2(11.0, 2.0));
+  /* Cursor-shaped pull — drifts the smoke gently toward the cursor */
+  vec2 mouseAuv = vec2(uMouse.x * aspect, uMouse.y);
+  float mouseDist = length((auv - mouseAuv) * vec2(0.88, 1.12));
+  float mousePull = smoothstep(0.62, 0.0, mouseDist);
 
   float reveal = smoothstep(0.0, 1.0, uProgress);
-  float warpAmount = (0.31 + 0.08 * uMotion) * reveal;
-  float distortedDist = dist
-    - warp1 * warpAmount * 0.78
-    - warp2 * warpAmount * 0.24
-    - mousePull * (0.08 + 0.04 * uMotion) * reveal;
 
-  float inkRadius = reveal * 0.94;
-  float core = smoothstep(inkRadius, inkRadius * 0.16, distortedDist);
-  float hardCore = smoothstep(inkRadius * 0.42, 0.0, distortedDist);
-  float fringe = smoothstep(inkRadius * 1.48, inkRadius * 0.52, distortedDist - paperGrain * 0.065 * reveal);
-  float alpha = max(core * 0.98, fringe * 0.62);
-  alpha = mix(alpha, 1.0, hardCore * 0.58);
-  alpha *= reveal;
+  /* ── Noise field driving smoke shape ── */
+  float t = uTime * 0.55;
+  vec2 noiseCoord = auv * 1.7 + vec2(0.4, -0.3);
+  float warp1 = warpedFBM(noiseCoord, t);
+  float warp2 = fbm(noiseCoord * 2.6 + vec2(3.1, 7.4) + t * 0.2);
+  float micro = fbm(noiseCoord * 5.4 + vec2(11.0, 2.0) - t * 0.15);
 
-  alpha = clamp(alpha, 0.0, 1.0);
+  /* Displace the corner-distance field with the noise to break up
+     any circular silhouette into organic billows. */
+  float warpAmount = (0.36 + 0.10 * uMotion) * reveal;
+  float distortedDist = cornerDist
+    - warp1 * warpAmount * 0.92
+    - warp2 * warpAmount * 0.32
+    - mousePull * (0.10 + 0.05 * uMotion) * reveal;
 
-  vec3 inkColor = vec3(0.008, 0.008, 0.009);
+  /* ── Smoke alpha — soft falloff with feathered fringe ── */
+  float radius   = 0.30 + reveal * 0.95;
+  float core     = smoothstep(radius * 1.05, radius * 0.18, distortedDist);
+  float fringe   = smoothstep(radius * 1.55, radius * 0.55,
+                              distortedDist - micro * 0.085 * reveal);
+  float smokeA   = max(core * 0.95, fringe * 0.55);
+  smokeA *= reveal;
 
-  gl_FragColor = vec4(inkColor * alpha, alpha);
+  /* ── Property-image reveal embedded in the smoke ── */
+  /* Sample with UVs displaced by the same noise field so the image
+     looks like it's inside the volume. Add a small cursor parallax. */
+  vec2 parallax = (uMouse - 0.5) * 0.035;
+  vec2 imageUV  = uv + vec2(warp1, warp2) * 0.045 * reveal + parallax;
+
+  /* Cover-fit the property image into the canvas using uRevealAspect */
+  float canvasAspect = aspect;
+  vec2 fitUV = imageUV;
+  if (uRevealAspect > canvasAspect) {
+    float scale = canvasAspect / uRevealAspect;
+    fitUV.x = (imageUV.x - 0.5) * scale + 0.5;
+  } else {
+    float scale = uRevealAspect / canvasAspect;
+    fitUV.y = (imageUV.y - 0.5) * scale + 0.5;
+  }
+  fitUV = clamp(fitUV, 0.0, 1.0);
+
+  vec3 propertyCol = texture2D(uReveal, fitUV).rgb;
+
+  /* Image is only visible in the *dense* interior of the smoke,
+     so it feels embedded — never appears on thin fringes. */
+  float imageMask = smoothstep(radius * 0.85, radius * 0.32, distortedDist);
+  imageMask *= reveal * uRevealReady;
+
+  /* ── Gold marble-vein accents ── */
+  float veinField = abs(fbm(noiseCoord * 3.2 + vec2(2.3, -4.7) + t * 0.12)
+                        - micro);
+  float veins = pow(1.0 - smoothstep(0.0, 0.12, veinField), 6.0);
+  veins *= smoothstep(radius * 1.3, radius * 0.4, distortedDist);
+  veins *= reveal;
+
+  /* ── Compose colors ── */
+  vec3 smokeColor = vec3(0.012, 0.011, 0.012);          /* deep ink */
+  vec3 goldColor  = vec3(0.690, 0.478, 0.353);          /* #B07A5A */
+
+  /* Smoke darkens. Image lights the dense core. Veins add gold. */
+  vec3 col = smokeColor;
+  col = mix(col, propertyCol * 0.92, imageMask);
+  col += goldColor * veins * 0.55;
+
+  /* ── Edge feather — canvas's rectangular bounds fade to 0
+        before reaching any side. The bounds are invisible. ── */
+  float edgeFadeX = smoothstep(0.0, 0.42, uv.x);
+  float edgeFadeY = smoothstep(0.0, 0.42, uv.y);
+  float edgeFade  = edgeFadeX * edgeFadeY;
+
+  float alpha = max(smokeA, imageMask * 0.85);
+  alpha *= edgeFade;
+  alpha  = clamp(alpha, 0.0, 1.0);
+
+  gl_FragColor = vec4(col * alpha, alpha);
 }
 `
 
@@ -135,6 +190,9 @@ export default function AtmosphericHover({ isActive }) {
     hasPointer: false,
     lastFrameTime: 0,
     isRunning: false,
+    time: 0,
+    revealReady: 0,
+    revealAspect: 16 / 9,
   })
 
   /* ── WebGL initialization ─────── */
@@ -221,8 +279,60 @@ export default function AtmosphericHover({ isActive }) {
     // Uniform locations
     const uProgress = gl.getUniformLocation(program, 'uProgress')
     const uMotion = gl.getUniformLocation(program, 'uMotion')
+    const uTime = gl.getUniformLocation(program, 'uTime')
     const uMouse = gl.getUniformLocation(program, 'uMouse')
     const uResolution = gl.getUniformLocation(program, 'uResolution')
+    const uReveal = gl.getUniformLocation(program, 'uReveal')
+    const uRevealReady = gl.getUniformLocation(program, 'uRevealReady')
+    const uRevealAspect = gl.getUniformLocation(program, 'uRevealAspect')
+
+    /* ── Reveal texture (lazy, GPU-friendly) ──
+       1×1 placeholder used until the property image decodes, so the
+       shader never samples an undefined texture. The placeholder is
+       silently replaced once the image is ready — no flicker because
+       uRevealReady gates the image term in the fragment shader. */
+    const texture = gl.createTexture()
+    gl.bindTexture(gl.TEXTURE_2D, texture)
+    gl.texImage2D(
+      gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0,
+      gl.RGBA, gl.UNSIGNED_BYTE,
+      new Uint8Array([10, 10, 12, 255])
+    )
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+
+    const revealImg = new Image()
+    revealImg.crossOrigin = 'anonymous'
+    let revealCancelled = false
+    const finishImageUpload = () => {
+      if (revealCancelled) return
+      try {
+        gl.bindTexture(gl.TEXTURE_2D, texture)
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+        gl.texImage2D(
+          gl.TEXTURE_2D, 0, gl.RGBA,
+          gl.RGBA, gl.UNSIGNED_BYTE, revealImg
+        )
+        if (revealImg.naturalWidth && revealImg.naturalHeight) {
+          stateRef.current.revealAspect =
+            revealImg.naturalWidth / revealImg.naturalHeight
+        }
+        stateRef.current.revealReady = 1
+        if (stateRef.current.progress > 0) startRef.current?.()
+      } catch (err) {
+        console.warn('[AtmosphericHover] reveal upload failed:', err)
+      }
+    }
+    if (typeof revealImg.decode === 'function') {
+      revealImg.src = '/project-showcase-bg.jpeg'
+      revealImg.decode().then(finishImageUpload).catch(finishImageUpload)
+    } else {
+      revealImg.onload = finishImageUpload
+      revealImg.onerror = () => {} /* keep placeholder, gated by uRevealReady */
+      revealImg.src = '/project-showcase-bg.jpeg'
+    }
 
     // Alpha blending
     gl.enable(gl.BLEND)
@@ -247,6 +357,12 @@ export default function AtmosphericHover({ isActive }) {
       state.targetMotion *= Math.exp(-10.0 * dt)
       state.motion += (state.targetMotion - state.motion) * mouseFactor
 
+      /* Advance time only while smoke is visible — preserves the
+         "no idle RAF" behavior on hover-out for battery life. */
+      if (state.progress > 0.001 || state.targetProgress > 0) {
+        state.time += dt
+      }
+
       if (state.progress < 0.001 && state.targetProgress === 0) {
         state.progress = 0
         state.isRunning = false
@@ -260,22 +376,36 @@ export default function AtmosphericHover({ isActive }) {
       gl.clearColor(0, 0, 0, 0)
       gl.clear(gl.COLOR_BUFFER_BIT)
       gl.useProgram(program)
+
+      gl.activeTexture(gl.TEXTURE0)
+      gl.bindTexture(gl.TEXTURE_2D, texture)
+      gl.uniform1i(uReveal, 0)
+
       gl.uniform1f(uProgress, state.progress)
       gl.uniform1f(uMotion, state.motion)
+      gl.uniform1f(uTime, state.time)
       gl.uniform2f(uMouse, state.mouseX, state.mouseY)
       gl.uniform2f(uResolution, canvas.width, canvas.height)
+      gl.uniform1f(uRevealReady, state.revealReady)
+      gl.uniform1f(uRevealAspect, state.revealAspect)
       gl.drawArrays(gl.TRIANGLES, 0, 6)
 
-      const progressSettled = Math.abs(state.targetProgress - state.progress) < 0.0015
-      const mouseSettled =
-        Math.abs(state.targetMouseX - state.mouseX) + Math.abs(state.targetMouseY - state.mouseY) < 0.0015
-      const motionSettled = state.motion < 0.002 && state.targetMotion < 0.002
-
-      if (progressSettled && mouseSettled && motionSettled) {
-        state.progress = state.targetProgress
-        state.isRunning = false
-        rafRef.current = null
-        return
+      /* Keep RAF alive while smoke is on screen so the warped fBm
+         keeps drifting — this is what makes the cloud feel alive
+         instead of a static frame held after the expansion settles. */
+      const stillRevealed = state.targetProgress > 0 || state.progress > 0.001
+      if (!stillRevealed) {
+        const progressSettled = Math.abs(state.targetProgress - state.progress) < 0.0015
+        const mouseSettled =
+          Math.abs(state.targetMouseX - state.mouseX) +
+          Math.abs(state.targetMouseY - state.mouseY) < 0.0015
+        const motionSettled = state.motion < 0.002 && state.targetMotion < 0.002
+        if (progressSettled && mouseSettled && motionSettled) {
+          state.progress = state.targetProgress
+          state.isRunning = false
+          rafRef.current = null
+          return
+        }
       }
 
       rafRef.current = requestAnimationFrame(render)
@@ -316,6 +446,10 @@ export default function AtmosphericHover({ isActive }) {
       window.removeEventListener('resize', resize)
       window.removeEventListener('pointermove', handlePointerMove)
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      revealCancelled = true
+      revealImg.onload = null
+      revealImg.onerror = null
+      gl.deleteTexture(texture)
       gl.deleteProgram(program)
       gl.deleteShader(vs)
       gl.deleteShader(fs)

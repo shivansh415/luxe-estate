@@ -394,22 +394,24 @@ body.cinematic-transition-revealing #main-nav {
   z-index: 101;
   pointer-events: none;
   opacity: 0;
-  transform: translate3d(3%, -3%, 0) scale(0.96);
+  transform: translate3d(2%, -2%, 0) scale(0.985);
   transform-origin: top right;
   transition:
     opacity 1.15s var(--ease-luxury) 0.08s,
     transform 1.35s var(--ease-luxury) 0.08s;
+  /* Whisper-thin atmospheric warmth behind the volumetric WebGL smoke.
+     The shader handles all visible smoke, image reveal, and edge
+     feathering. This layer adds only a barely-perceptible warm vignette
+     to tie the effect into the marble background. */
   background:
-    radial-gradient(ellipse at 100% 0%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 16%, rgba(0, 0, 0, 0.7) 31%, rgba(0, 0, 0, 0.28) 46%, transparent 68%),
-    radial-gradient(ellipse at 88% 4%, rgba(14, 14, 15, 0.86) 0%, rgba(14, 14, 15, 0.44) 22%, transparent 52%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0%, transparent 34%),
-    linear-gradient(270deg, rgba(0, 0, 0, 0.28) 0%, transparent 30%);
-  background-size:
-    100% 100%,
-    100% 100%,
-    100% 100%,
-    100% 100%;
-  background-position: center;
+    radial-gradient(
+      ellipse 65% 70% at 100% 0%,
+      rgba(0, 0, 0, 0.10) 0%,
+      rgba(0, 0, 0, 0.05) 36%,
+      rgba(0, 0, 0, 0.015) 68%,
+      transparent 100%
+    );
+  background-repeat: no-repeat;
 }
 
 body.hover-immersive-active .content-layer section {
