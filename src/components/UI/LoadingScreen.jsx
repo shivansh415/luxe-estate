@@ -86,9 +86,8 @@ export default function LoadingScreen({ isLoaded, realProgress = 0, onComplete }
   const handleExitComplete = () => {
     onComplete?.()
   }
-
-  const displayNum = Math.round(displayRef.current)
-  const formattedPercent = displayNum < 10 ? `0${displayNum}` : `${displayNum}`
+  // Initial display value (the RAF loop will dynamically update the DOM element via counterElRef)
+  const formattedPercent = '00'
 
   // Cinematic easing
   const luxeEase = [0.16, 1, 0.3, 1]

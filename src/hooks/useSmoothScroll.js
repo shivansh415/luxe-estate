@@ -20,7 +20,6 @@ export function useSmoothScroll() {
   const scrollProgressRef = useRef(0)
   const currentSectionRef = useRef(0)
   const sectionTriggersRef = useRef([])
-  const sectionPulseTimerRef = useRef(null)
 
   useEffect(() => {
     const lenis = new Lenis({

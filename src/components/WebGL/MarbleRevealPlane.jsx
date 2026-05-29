@@ -1,4 +1,5 @@
-import { useRef, useMemo, useEffect } from 'react'
+/* eslint-disable react-hooks/refs */
+import { useRef, useMemo, useEffect, useCallback } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useCursorLerp } from '../../hooks/useCursorLerp'
@@ -26,51 +27,14 @@ import fragmentShader from '../../shaders/marbleReveal.frag?raw'
  *  - All per-frame work happens in a single useFrame callback.
  *  - No state updates, no object creation, no GC pressure in the hot loop.
  */
-export default function MarbleRevealPlane({ scrollProgressRef, currentSectionRef }) {
+export default function MarbleRevealPlane({ scrollProgressRef, currentSectionRef, onWebGLProgress }) {
   const meshRef = useRef()
   const materialRef = useRef()
 
-  // --- Cursor tracking (exponential damp, λ=8) ---
-  const { update: updateCursor } = useCursorLerp()
-
-  // --- Dual-buffer video system ---
-  const { update: videoUpdate, switchToSection } = useVideoTextures()
-
-  // --- Marble texture (loaded once, never disposed until unmount) ---
-  // FIX L-6: Use onLoad callback from TextureLoader to detect aspect ratio.
-  // This eliminates the second redundant Image() network request.
-  const marbleTexture = useMemo(() => {
-    const loader = new THREE.TextureLoader()
-    const tex = loader.load('/textures/marble-generated.png', (loadedTex) => {
-      // Detect intrinsic aspect from the already-loaded image element
-      const img = loadedTex.image
-      if (img && img.naturalWidth && img.naturalHeight) {
-        stateRef.current.marbleAspect = img.naturalWidth / img.naturalHeight
-        stateRef.current.marbleAspectDetected = true
-      }
-    })
-    tex.wrapS = THREE.RepeatWrapping
-    tex.wrapT = THREE.RepeatWrapping
-    tex.minFilter = THREE.LinearFilter
-    tex.magFilter = THREE.LinearFilter
-    tex.colorSpace = THREE.SRGBColorSpace
-    return tex
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // --- Fallback black texture ---
-  const fallbackTexture = useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 2
-    canvas.height = 2
-    const ctx = canvas.getContext('2d')
-    ctx.fillStyle = '#0a0a0a'
-    ctx.fillRect(0, 0, 2, 2)
-    const tex = new THREE.CanvasTexture(canvas)
-    tex.minFilter = THREE.LinearFilter
-    tex.magFilter = THREE.LinearFilter
-    return tex
-  }, [])
+  const onWebGLProgressRef = useRef(onWebGLProgress)
+  useEffect(() => {
+    onWebGLProgressRef.current = onWebGLProgress
+  }, [onWebGLProgress])
 
   // --- Internal animation state (NEVER stored in React state) ---
   const stateRef = useRef({
@@ -87,6 +51,54 @@ export default function MarbleRevealPlane({ scrollProgressRef, currentSectionRef
     videoAspect: 16.0 / 9.0, // Default 16:9 until video metadata available
     marbleAspectDetected: false,
   })
+
+  // --- Cursor tracking (exponential damp, λ=8) ---
+  const { update: updateCursor } = useCursorLerp()
+
+  // --- Dual-buffer video system ---
+  const { update: videoUpdate, switchToSection } = useVideoTextures(
+    useCallback(() => {
+      onWebGLProgressRef.current?.('webglVideo', true)
+    }, [])
+  )
+
+  // --- Marble texture (loaded once, never disposed until unmount) ---
+  // FIX L-6: Use onLoad callback from TextureLoader to detect aspect ratio.
+  // This eliminates the second redundant Image() network request.
+  const marbleTexture = useMemo(() => {
+    const loader = new THREE.TextureLoader()
+    const tex = loader.load('/textures/marble-generated.png', (loadedTex) => {
+      // Detect intrinsic aspect from the already-loaded image element
+      const img = loadedTex.image
+      if (img && img.naturalWidth && img.naturalHeight) {
+        stateRef.current.marbleAspect = img.naturalWidth / img.naturalHeight
+        stateRef.current.marbleAspectDetected = true
+      }
+      onWebGLProgressRef.current?.('webglMarble', true)
+    })
+    tex.wrapS = THREE.RepeatWrapping
+    tex.wrapT = THREE.RepeatWrapping
+    tex.minFilter = THREE.LinearFilter
+    tex.magFilter = THREE.LinearFilter
+    tex.colorSpace = THREE.SRGBColorSpace
+    return tex
+  }, [])
+
+  // --- Fallback black texture ---
+  const fallbackTexture = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 2
+    canvas.height = 2
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#0a0a0a'
+    ctx.fillRect(0, 0, 2, 2)
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.minFilter = THREE.LinearFilter
+    tex.magFilter = THREE.LinearFilter
+    return tex
+  }, [])
+
+
 
   // --- ShaderMaterial — created ONCE, no dependency on size ---
   const shaderMaterial = useMemo(() => {

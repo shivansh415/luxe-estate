@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, memo } from 'react'
+import { useState, useCallback, useEffect, useRef, memo } from 'react'
 import { YouTubePlayerProvider } from './context/YouTubePlayerContext'
 import CinematicScene from './components/WebGL/CinematicScene'
 import HeroSection from './components/UI/HeroSection'
@@ -235,42 +235,74 @@ function AppExperience({ scrollProgressRef, currentSectionRef, lenisRef }) {
     })
   }, [runTransition, switchPage])
 
-  // FIX #1: Semi-real loading — track critical assets only.
-  // Wait for: fonts + marble texture + hero video (with timeout).
-  // Never block on secondary videos — they load progressively after paint.
+  // ── Real Preloader Progress Tracking ──
+  // Weights (20% each):
+  // 1. fonts (document.fonts.ready)
+  // 2. domMarble (marble-generated.png preloaded in DOM)
+  // 3. domVideo (section-1-reveal.mp4 preloaded in DOM)
+  // 4. webglMarble (Three.js TextureLoader completes & uploads marble texture)
+  // 5. webglVideo (WebGL video element triggers canplay/canplaythrough)
   const [loadProgress, setLoadProgress] = useState(0)
+
+  const loadedAssetsRef = useRef({
+    fonts: false,
+    domMarble: false,
+    domVideo: false,
+    webglMarble: false,
+    webglVideo: false,
+  })
+
+  const updateProgress = useCallback((assetName, isLoaded) => {
+    const assets = loadedAssetsRef.current
+    if (assets[assetName] === isLoaded) return
+    assets[assetName] = isLoaded
+
+    // Compute progress
+    let total = 0
+    if (assets.fonts) total += 20
+    if (assets.domMarble) total += 20
+    if (assets.domVideo) total += 20
+    if (assets.webglMarble) total += 20
+    if (assets.webglVideo) total += 20
+
+    setLoadProgress(total)
+    if (total >= 100) {
+      setIsReady(true)
+    }
+  }, [])
+
+  const handleWebGLProgress = useCallback((assetName, isLoaded) => {
+    updateProgress(assetName, isLoaded)
+  }, [updateProgress])
 
   useEffect(() => {
     let cancelled = false
-    const weights = { fonts: 20, marble: 50, hero: 30 }
-    const loaded = { fonts: false, marble: false, hero: false }
 
-    const updateProgress = () => {
-      if (cancelled) return
-      let total = 0
-      if (loaded.fonts) total += weights.fonts
-      if (loaded.marble) total += weights.marble
-      if (loaded.hero) total += weights.hero
-      setLoadProgress(total)
-      if (total >= 100 && !cancelled) setIsReady(true)
-    }
+    // Report preloaded assets to console for visibility
+    console.log('[Luxe Preload Gate] Initializing preload of critical above-the-fold assets: fonts, marble texture, and hero reveal video...')
 
-    // 1. Fonts — typically fast from cache
+    // 1. Fonts — wait for Bebas Neue, Bricolage Grotesque, Cormorant Garamond
     document.fonts.ready.then(() => {
-      loaded.fonts = true
-      updateProgress()
+      if (cancelled) return
+      updateProgress('fonts', true)
     }).catch(() => {
-      loaded.fonts = true
-      updateProgress()
+      if (cancelled) return
+      updateProgress('fonts', true)
     })
 
-    // 2. Marble texture — the single most critical visual asset
+    // 2. DOM Marble Texture image preload
     const marbleImg = new Image()
-    marbleImg.onload = () => { loaded.marble = true; updateProgress() }
-    marbleImg.onerror = () => { loaded.marble = true; updateProgress() }
+    marbleImg.onload = () => {
+      if (cancelled) return
+      updateProgress('domMarble', true)
+    }
+    marbleImg.onerror = () => {
+      if (cancelled) return
+      updateProgress('domMarble', true)
+    }
     marbleImg.src = '/textures/marble-generated.png'
 
-    // 3. Hero video — short timeout so we never stall on slow connections
+    // 3. DOM Video element preload
     const heroVideo = document.createElement('video')
     heroVideo.preload = 'auto'
     heroVideo.muted = true
@@ -279,23 +311,26 @@ function AppExperience({ scrollProgressRef, currentSectionRef, lenisRef }) {
     const resolveHero = () => {
       if (heroResolved) return
       heroResolved = true
-      loaded.hero = true
-      updateProgress()
+      if (cancelled) return
+      updateProgress('domVideo', true)
+      heroVideo.oncanplay = null
       heroVideo.oncanplaythrough = null
     }
+    heroVideo.oncanplay = resolveHero
     heroVideo.oncanplaythrough = resolveHero
     heroVideo.src = '/videos/section-1-reveal.mp4'
-    // Don't wait forever for the video — 1.5s max
-    const heroTimeout = setTimeout(resolveHero, 1500)
+    const heroTimeout = setTimeout(resolveHero, 2000)
 
-    // Absolute safety net — never block longer than 4s
+    // 6s safe fallback timeout to prevent infinite preloader in case of network issues
     const safetyTimer = setTimeout(() => {
       if (cancelled) return
-      loaded.fonts = true
-      loaded.marble = true
-      loaded.hero = true
-      updateProgress()
-    }, 4000)
+      console.warn('[Luxe Preload Gate] Safe fallback timeout reached. Forcing preloader completion.')
+      updateProgress('fonts', true)
+      updateProgress('domMarble', true)
+      updateProgress('domVideo', true)
+      updateProgress('webglMarble', true)
+      updateProgress('webglVideo', true)
+    }, 6000)
 
     return () => {
       cancelled = true
@@ -303,9 +338,10 @@ function AppExperience({ scrollProgressRef, currentSectionRef, lenisRef }) {
       clearTimeout(safetyTimer)
       marbleImg.onload = null
       marbleImg.onerror = null
+      heroVideo.oncanplay = null
       heroVideo.oncanplaythrough = null
     }
-  }, [])
+  }, [updateProgress])
 
   return (
     <>
@@ -318,10 +354,11 @@ function AppExperience({ scrollProgressRef, currentSectionRef, lenisRef }) {
       <MemoizedCursorFollower />
 
       {/* Fixed WebGL Background — reads refs directly in useFrame, no re-renders */}
-      {currentPage === 'home' && (
+      {currentPage !== 'showcase' && (
         <CinematicScene
           scrollProgressRef={scrollProgressRef}
           currentSectionRef={currentSectionRef}
+          onWebGLProgress={handleWebGLProgress}
         />
       )}
 

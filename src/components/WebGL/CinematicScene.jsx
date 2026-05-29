@@ -48,7 +48,7 @@ class WebGLErrorBoundary extends Component {
  * PERFORMANCE: Canvas config is memoized. The Canvas element itself
  * never re-renders — MarbleRevealPlane reads refs in useFrame.
  */
-function CinematicScene({ scrollProgressRef, currentSectionRef }) {
+function CinematicScene({ scrollProgressRef, currentSectionRef, onWebGLProgress }) {
   const dpr = useMemo(() => {
     const maxDpr = window.innerWidth < 768 ? 1.15 : 1.5
     return [1, Math.min(window.devicePixelRatio, maxDpr)]
@@ -90,6 +90,7 @@ function CinematicScene({ scrollProgressRef, currentSectionRef }) {
             <MarbleRevealPlane
               scrollProgressRef={scrollProgressRef}
               currentSectionRef={currentSectionRef}
+              onWebGLProgress={onWebGLProgress}
             />
           </Suspense>
           <CinematicPostProcessing />

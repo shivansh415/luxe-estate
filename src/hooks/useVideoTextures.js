@@ -68,9 +68,14 @@ function createVideoTexture(video) {
 //    - requestVideoFrameCallback conflicts between two textures
 // ================================================================
 
-export function useVideoTextures() {
+export function useVideoTextures(onFirstVideoReady) {
   const videosRef = useRef([])    // { video, texture } per section
   const fallbackRef = useRef(null)
+  const onFirstVideoReadyRef = useRef(onFirstVideoReady)
+
+  useEffect(() => {
+    onFirstVideoReadyRef.current = onFirstVideoReady
+  }, [onFirstVideoReady])
 
   // ── Fallback texture ──
   useEffect(() => {
@@ -97,6 +102,19 @@ export function useVideoTextures() {
 
       // Start first section playing immediately
       if (index === 0) {
+        const handleReady = () => {
+          onFirstVideoReadyRef.current?.()
+          video.oncanplay = null
+          video.oncanplaythrough = null
+        }
+
+        if (video.readyState >= 3) {
+          onFirstVideoReadyRef.current?.()
+        } else {
+          video.oncanplay = handleReady
+          video.oncanplaythrough = handleReady
+        }
+
         video.play().catch(() => {})
       }
 
@@ -107,6 +125,8 @@ export function useVideoTextures() {
 
     return () => {
       entries.forEach(({ video, texture }) => {
+        video.oncanplay = null
+        video.oncanplaythrough = null
         video.pause()
         video.removeAttribute('src')
         video.load()
