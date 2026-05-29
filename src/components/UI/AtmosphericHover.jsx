@@ -110,11 +110,14 @@ void main() {
     - mousePull * (0.10 + 0.05 * uMotion) * reveal;
 
   /* ── Smoke alpha — soft falloff with feathered fringe ── */
-  float radius   = 0.30 + reveal * 0.95;
+  /* Radius kept compact so the smoke stays anchored to the CTA corner
+     and never reaches the canvas edges where the rectangular bound
+     would become visible. */
+  float radius   = 0.18 + reveal * 0.55;
   float core     = smoothstep(radius * 1.05, radius * 0.18, distortedDist);
   float fringe   = smoothstep(radius * 1.55, radius * 0.55,
                               distortedDist - micro * 0.085 * reveal);
-  float smokeA   = max(core * 0.95, fringe * 0.55);
+  float smokeA   = max(core * 0.85, fringe * 0.45);
   smokeA *= reveal;
 
   /* ── Property-image reveal embedded in the smoke ── */
@@ -158,14 +161,25 @@ void main() {
   col = mix(col, propertyCol * 0.92, imageMask);
   col += goldColor * veins * 0.55;
 
-  /* ── Edge feather — canvas's rectangular bounds fade to 0
-        before reaching any side. The bounds are invisible. ── */
-  float edgeFadeX = smoothstep(0.0, 0.42, uv.x);
-  float edgeFadeY = smoothstep(0.0, 0.42, uv.y);
-  float edgeFade  = edgeFadeX * edgeFadeY;
+  /* ── Edge feather — kills the canvas's rectangular bounds.
+        Two layers:
+        1. A radial falloff anchored to the top-right CTA corner that
+           softly attenuates anything more than ~40% away from the CTA.
+        2. Per-axis smoothsteps from the left and bottom edges that
+           guarantee alpha=0 across a wide band, so neither boundary
+           can ever produce a visible line.                             */
+  float cornerFalloff = 1.0 - smoothstep(0.32, 0.95,
+                                          length((uv - vec2(1.0, 1.0)) *
+                                                 vec2(1.0, aspect / max(aspect, 1.0))));
+  float edgeFadeX = smoothstep(0.0, 0.55, uv.x);
+  float edgeFadeY = smoothstep(0.0, 0.55, uv.y);
+  float edgeFade  = edgeFadeX * edgeFadeY * cornerFalloff;
 
-  float alpha = max(smokeA, imageMask * 0.85);
+  float alpha = max(smokeA, imageMask * 0.78);
   alpha *= edgeFade;
+  /* Global density softening keeps the volume premium and atmospheric
+     rather than panel-like. Image term gets its own scaling above. */
+  alpha *= 0.78;
   alpha  = clamp(alpha, 0.0, 1.0);
 
   gl_FragColor = vec4(col * alpha, alpha);
@@ -478,8 +492,8 @@ export default function AtmosphericHover({ isActive }) {
           position: 'fixed',
           top: 0,
           right: 0,
-          width: 'min(92vw, 1440px)',
-          height: 'min(88vh, 1040px)',
+          width: 'min(58vw, 880px)',
+          height: 'min(62vh, 720px)',
           contain: 'strict',
           pointerEvents: 'none',
           zIndex: 102,
