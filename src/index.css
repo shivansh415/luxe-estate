@@ -388,57 +388,16 @@ body.cinematic-transition-revealing #main-nav {
   transform: translate3d(0, -20px, 0);
 }
 
-.immersive-ink-backing {
-  position: fixed;
-  inset: 0;
-  z-index: 101;
-  pointer-events: none;
-  opacity: 0;
-  transform: translate3d(3%, -3%, 0) scale(0.96);
-  transform-origin: top right;
-  transition:
-    opacity 1.15s var(--ease-luxury) 0.08s,
-    transform 1.35s var(--ease-luxury) 0.08s;
-  background:
-    radial-gradient(ellipse at 100% 0%, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.96) 16%, rgba(0, 0, 0, 0.7) 31%, rgba(0, 0, 0, 0.28) 46%, transparent 68%),
-    radial-gradient(ellipse at 88% 4%, rgba(14, 14, 15, 0.86) 0%, rgba(14, 14, 15, 0.44) 22%, transparent 52%),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0%, transparent 34%),
-    linear-gradient(270deg, rgba(0, 0, 0, 0.28) 0%, transparent 30%);
-  background-size:
-    100% 100%,
-    100% 100%,
-    100% 100%,
-    100% 100%;
-  background-position: center;
-}
-
-body.hover-immersive-active .content-layer section {
-  opacity: 0 !important;
-  transform: translate3d(-18px, 0, 0) skewX(-0.65deg);
-}
-
-body.hover-immersive-active .content-layer > div:not(.immersive-ink-backing):not(.standalone-page) {
-  opacity: 0 !important;
-}
-
-body.hover-immersive-active #main-nav > div:first-child {
-  opacity: 0 !important;
-}
-
+/* ── Hover-state nav adjustments ──
+   On hover, only the nav text color flips so it stays legible against
+   the WebGL smoke that the canvas paints in the corner. NO viewport-
+   sized overlay. NO fade-out of sections (which previously made the
+   overlay rectangle obvious). The WebGL canvas is the SOLE visible
+   change during hover. */
 body.hover-immersive-active #main-nav .nav-hover-trigger {
   color: rgba(255, 255, 255, 0.92) !important;
-  opacity: 1 !important;
   position: relative;
   z-index: 1;
-}
-
-body.hover-immersive-active #nav-progress-bar {
-  opacity: 0 !important;
-}
-
-body.hover-immersive-active .immersive-ink-backing {
-  opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
 }
 
 /* ── Global transparency enforcement ──

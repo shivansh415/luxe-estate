@@ -278,68 +278,117 @@ function AppExperience({ scrollProgressRef, currentSectionRef, lenisRef }) {
   useEffect(() => {
     let cancelled = false
 
-    // Report preloaded assets to console for visibility
-    console.log('[Luxe Preload Gate] Initializing preload of critical above-the-fold assets: fonts, marble texture, and hero reveal video...')
+    console.log('[Luxe Preload Gate] Initializing centralized asset readiness — fonts, marble texture, hero reveal video, WebGL textures...')
 
-    // 1. Fonts — wait for Bebas Neue, Bricolage Grotesque, Cormorant Garamond
-    document.fonts.ready.then(() => {
-      if (cancelled) return
-      updateProgress('fonts', true)
-    }).catch(() => {
-      if (cancelled) return
-      updateProgress('fonts', true)
-    })
+    /* ── 1. Fonts — wait for actual font face availability ── */
+    const fontsP = (document.fonts?.ready ?? Promise.resolve())
+      .then(() => {
+        if (cancelled) return
+        updateProgress('fonts', true)
+      })
+      .catch(() => {
+        if (cancelled) return
+        updateProgress('fonts', true)
+      })
 
-    // 2. DOM Marble Texture image preload
+    /* ── 2. Marble texture — use img.decode() for true pixel-ready
+           signal (decode finished, ready to paint). Falls back to
+           onload/onerror on browsers without decode().               */
     const marbleImg = new Image()
-    marbleImg.onload = () => {
-      if (cancelled) return
-      updateProgress('domMarble', true)
-    }
-    marbleImg.onerror = () => {
-      if (cancelled) return
-      updateProgress('domMarble', true)
-    }
     marbleImg.src = '/textures/marble-generated.png'
+    const marbleDecodeP = typeof marbleImg.decode === 'function'
+      ? marbleImg.decode()
+      : new Promise((resolve, reject) => {
+          marbleImg.onload = resolve
+          marbleImg.onerror = reject
+        })
+    marbleDecodeP
+      .then(() => {
+        if (cancelled) return
+        updateProgress('domMarble', true)
+      })
+      .catch(() => {
+        if (cancelled) return
+        updateProgress('domMarble', true)
+      })
 
-    // 3. DOM Video element preload
+    /* ── 3. Hero reveal video — wait for canplaythrough (enough buffer
+           to play through without stalling). canplay is a fallback
+           for browsers/CDNs that never emit canplaythrough.          */
     const heroVideo = document.createElement('video')
     heroVideo.preload = 'auto'
     heroVideo.muted = true
     heroVideo.playsInline = true
+    heroVideo.setAttribute('playsinline', '')
+    heroVideo.setAttribute('webkit-playsinline', '')
     let heroResolved = false
     const resolveHero = () => {
-      if (heroResolved) return
+      if (heroResolved || cancelled) return
       heroResolved = true
-      if (cancelled) return
+      heroVideo.removeEventListener('canplaythrough', resolveHero)
+      heroVideo.removeEventListener('canplay', resolveHero)
+      heroVideo.removeEventListener('error', resolveHero)
       updateProgress('domVideo', true)
-      heroVideo.oncanplay = null
-      heroVideo.oncanplaythrough = null
     }
-    heroVideo.oncanplay = resolveHero
-    heroVideo.oncanplaythrough = resolveHero
+    heroVideo.addEventListener('canplaythrough', resolveHero, { once: true })
+    heroVideo.addEventListener('canplay', resolveHero, { once: true })
+    heroVideo.addEventListener('error', resolveHero, { once: true })
     heroVideo.src = '/videos/section-1-reveal.mp4'
-    const heroTimeout = setTimeout(resolveHero, 2000)
 
-    // 6s safe fallback timeout to prevent infinite preloader in case of network issues
-    const safetyTimer = setTimeout(() => {
+    /* ── 4 & 5. webglMarble + webglVideo — reported via the
+           onWebGLProgress callback once Three.js has decoded the
+           texture and the video texture is canplay-ready inside
+           the shader. Wired through MarbleRevealPlane / useVideoTextures. */
+
+    /* ── Per-asset graceful fallbacks (only flip THAT asset, never
+           force-complete every asset like the old 6s safety did).
+           Required by spec: handle failed/stuck assets gracefully
+           without prematurely exiting the preloader for healthy ones. */
+    const perAssetFallback = (key, ms) =>
+      setTimeout(() => {
+        if (cancelled) return
+        if (!loadedAssetsRef.current[key]) {
+          console.warn(`[Luxe Preload Gate] Asset "${key}" did not signal ready within ${ms}ms — marking ready as graceful fallback.`)
+          updateProgress(key, true)
+        }
+      }, ms)
+
+    const fbFonts = perAssetFallback('fonts', 8000)
+    const fbDomMarble = perAssetFallback('domMarble', 15000)
+    const fbDomVideo = perAssetFallback('domVideo', 15000)
+    const fbWebglMarble = perAssetFallback('webglMarble', 15000)
+    const fbWebglVideo = perAssetFallback('webglVideo', 15000)
+
+    /* ── Absolute last-resort ceiling for catastrophically stuck
+           networks/devices. Spec #9: graceful failure handling.    */
+    const hardCeiling = setTimeout(() => {
       if (cancelled) return
-      console.warn('[Luxe Preload Gate] Safe fallback timeout reached. Forcing preloader completion.')
+      console.warn('[Luxe Preload Gate] Hard ceiling 20s reached. Forcing completion.')
       updateProgress('fonts', true)
       updateProgress('domMarble', true)
       updateProgress('domVideo', true)
       updateProgress('webglMarble', true)
       updateProgress('webglVideo', true)
-    }, 6000)
+    }, 20000)
 
     return () => {
       cancelled = true
-      clearTimeout(heroTimeout)
-      clearTimeout(safetyTimer)
+      clearTimeout(fbFonts)
+      clearTimeout(fbDomMarble)
+      clearTimeout(fbDomVideo)
+      clearTimeout(fbWebglMarble)
+      clearTimeout(fbWebglVideo)
+      clearTimeout(hardCeiling)
       marbleImg.onload = null
       marbleImg.onerror = null
-      heroVideo.oncanplay = null
-      heroVideo.oncanplaythrough = null
+      heroVideo.removeEventListener('canplaythrough', resolveHero)
+      heroVideo.removeEventListener('canplay', resolveHero)
+      heroVideo.removeEventListener('error', resolveHero)
+      // Stop any in-flight network load on unmount
+      heroVideo.removeAttribute('src')
+      try { heroVideo.load() } catch { /* ignore */ }
+      // Silence unused promise lint
+      void fontsP
     }
   }, [updateProgress])
 
