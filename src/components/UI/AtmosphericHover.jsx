@@ -485,7 +485,6 @@ export default function AtmosphericHover({ isActive }) {
 
   return (
     <>
-      <div className="immersive-ink-backing" aria-hidden="true" />
       <canvas
         ref={canvasRef}
         style={{

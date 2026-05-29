@@ -388,59 +388,16 @@ body.cinematic-transition-revealing #main-nav {
   transform: translate3d(0, -20px, 0);
 }
 
-.immersive-ink-backing {
-  position: fixed;
-  inset: 0;
-  z-index: 101;
-  pointer-events: none;
-  opacity: 0;
-  transform: translate3d(2%, -2%, 0) scale(0.985);
-  transform-origin: top right;
-  transition:
-    opacity 1.15s var(--ease-luxury) 0.08s,
-    transform 1.35s var(--ease-luxury) 0.08s;
-  /* Whisper-thin atmospheric warmth behind the volumetric WebGL smoke.
-     The shader handles all visible smoke, image reveal, and edge
-     feathering. This layer adds only a barely-perceptible warm vignette
-     to tie the effect into the marble background. */
-  background:
-    radial-gradient(
-      ellipse 65% 70% at 100% 0%,
-      rgba(0, 0, 0, 0.10) 0%,
-      rgba(0, 0, 0, 0.05) 36%,
-      rgba(0, 0, 0, 0.015) 68%,
-      transparent 100%
-    );
-  background-repeat: no-repeat;
-}
-
-body.hover-immersive-active .content-layer section {
-  opacity: 0 !important;
-  transform: translate3d(-18px, 0, 0) skewX(-0.65deg);
-}
-
-body.hover-immersive-active .content-layer > div:not(.immersive-ink-backing):not(.standalone-page) {
-  opacity: 0 !important;
-}
-
-body.hover-immersive-active #main-nav > div:first-child {
-  opacity: 0 !important;
-}
-
+/* ── Hover-state nav adjustments ──
+   On hover, only the nav text color flips so it stays legible against
+   the WebGL smoke that the canvas paints in the corner. NO viewport-
+   sized overlay. NO fade-out of sections (which previously made the
+   overlay rectangle obvious). The WebGL canvas is the SOLE visible
+   change during hover. */
 body.hover-immersive-active #main-nav .nav-hover-trigger {
   color: rgba(255, 255, 255, 0.92) !important;
-  opacity: 1 !important;
   position: relative;
   z-index: 1;
-}
-
-body.hover-immersive-active #nav-progress-bar {
-  opacity: 0 !important;
-}
-
-body.hover-immersive-active .immersive-ink-backing {
-  opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
 }
 
 /* ── Global transparency enforcement ──
