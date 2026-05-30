@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import Lenis from 'lenis'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { isCoarsePointer } from '../utils/mobile'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -22,15 +23,22 @@ export function useSmoothScroll() {
   const sectionTriggersRef = useRef([])
 
   useEffect(() => {
+    /* Mobile / touch devices:
+       - touchMultiplier 1.0 (was 1.5): stop fighting native iOS momentum.
+       - duration 1.0 (was 1.8): shorter settle time so finger-lift feels native.
+       - smoothWheel still on for hybrid devices (trackpad on iPad with mouse).
+       Desktop preserves the original cinematic 1.8s feel. */
+    const coarse = isCoarsePointer()
+
     const lenis = new Lenis({
       autoRaf: false,
-      duration: 1.8,
+      duration: coarse ? 1.0 : 1.8,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       orientation: 'vertical',
       gestureOrientation: 'vertical',
       smoothWheel: true,
       wheelMultiplier: 0.8,
-      touchMultiplier: 1.5,
+      touchMultiplier: coarse ? 1.0 : 1.5,
     })
 
     lenisRef.current = lenis

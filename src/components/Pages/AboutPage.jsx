@@ -6,6 +6,10 @@ gsap.registerPlugin(ScrollTrigger)
 
 /* ── Constants ── */
 const TOTAL_FRAMES = 300
+/* Mobile reduces effective frames by 2× — only every other frame is
+   loaded and drawn, cutting decode pressure & cache memory in half
+   while remaining visually smooth at 30+ fps scrub. */
+const MOBILE_FRAME_STRIDE = 2
 const INITIAL_FRAME_BATCH = 12
 const FRAME_PATH_PREFIX = '/frames/ezgif-frame-'
 const MOBILE_QUERY = '(max-width: 768px)'
@@ -31,8 +35,13 @@ if (typeof window !== 'undefined') {
 /**
  * Static particle configs — generated once, never recreated.
  * Each particle floats upward with random position/size/speed.
+ *
+ * Mobile: 8 particles instead of 24. CSS-animated DOM particles
+ * each force a separate compositing layer; fewer particles =
+ * less GPU memory + fewer composite ticks per scroll frame.
  */
-const PARTICLES = Array.from({ length: 24 }, (_, i) => ({
+const PARTICLE_COUNT = _isMobileCache ? 8 : 24
+const PARTICLES = Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
   id: i,
   left: `${4 + Math.random() * 92}%`,
   bottom: `${-8 + Math.random() * 50}%`,
@@ -339,9 +348,9 @@ function AboutPage({ onBackToHome, onRequestConsultation, lenisRef }) {
 
     const isMobile = matchesQuery(MOBILE_QUERY)
     const maxActiveLoads = isMobile ? 1 : 2
-    const cacheLimit = isMobile ? 32 : 48
-    const preloadBehind = isMobile ? 4 : 6
-    const preloadAhead = isMobile ? 12 : 20
+    const cacheLimit = isMobile ? 24 : 48
+    const preloadBehind = isMobile ? 2 : 6
+    const preloadAhead = isMobile ? 8 : 20
     const frames = Array.from({ length: TOTAL_FRAMES })
     const queuedFrames = new Set()
     const loadQueue = []
@@ -485,11 +494,16 @@ function AboutPage({ onBackToHome, onRequestConsultation, lenisRef }) {
       const start = Math.max(0, clampedCenter - preloadBehind)
       const end = Math.min(TOTAL_FRAMES - 1, clampedCenter + preloadAhead)
 
-      for (let i = clampedCenter + 2; i <= end; i += 1) {
+      /* Mobile: skip every other frame in the preload window so we
+         only ever decode the frames we'll actually draw (stride = 2
+         in requestBlueprintFrame). Halves bandwidth + decode cost. */
+      const stride = isMobile ? MOBILE_FRAME_STRIDE : 1
+
+      for (let i = clampedCenter + 2; i <= end; i += stride) {
         enqueueFrame(i)
       }
 
-      for (let i = clampedCenter - 2; i >= start; i -= 1) {
+      for (let i = clampedCenter - 2; i >= start; i -= stride) {
         enqueueFrame(i)
       }
 
@@ -667,10 +681,17 @@ function AboutPage({ onBackToHome, onRequestConsultation, lenisRef }) {
       ctx = gsap.context(() => {
         const requestBlueprintFrame = (progress) => {
           const sequenceProgress = Math.min(progress, 1)
-          const frameIndex = Math.max(
+          let frameIndex = Math.max(
             0,
             Math.min(TOTAL_FRAMES - 1, Math.round(sequenceProgress * (TOTAL_FRAMES - 1)))
           )
+          /* Mobile: snap frame index to every Nth frame so we never
+             load or draw the in-between frames. Cuts decode/draw cost
+             by exactly the stride factor without changing scrub feel. */
+          if (_isMobileCache && MOBILE_FRAME_STRIDE > 1) {
+            frameIndex = Math.round(frameIndex / MOBILE_FRAME_STRIDE) * MOBILE_FRAME_STRIDE
+            if (frameIndex >= TOTAL_FRAMES) frameIndex = TOTAL_FRAMES - 1
+          }
 
           pendingFrameRef.current = frameIndex
           loadFrameRef.current?.preloadAround(frameIndex)
@@ -904,9 +925,13 @@ function AboutPage({ onBackToHome, onRequestConsultation, lenisRef }) {
           scrollTrigger: {
             trigger: section,
             start: 'top top',
-            end: isMobile ? '+=220%' : '+=320%',
+            /* Mobile: 140% pin (was 220%). Each frame in the hallway
+               sequence does a 3D z-translate which forces a separate
+               compositing layer per frame; shorter pin = fewer total
+               composite ticks during scroll. */
+            end: isMobile ? '+=140%' : '+=320%',
             pin: true,
-            scrub: isMobile ? 0.4 : 0.5,
+            scrub: isMobile ? 0.25 : 0.5,
             anticipatePin: 0,
           },
         })

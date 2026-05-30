@@ -287,6 +287,7 @@ function EditorialVerticalCard({
     >
       {/* Ambient glow */}
       <div
+        className="ambient-glow-blur"
         style={{
           position: 'absolute',
           top: '12%',

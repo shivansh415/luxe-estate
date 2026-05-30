@@ -8,8 +8,12 @@ const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
 const matchesQuery = (query) =>
   typeof window !== 'undefined' && window.matchMedia(query).matches
 
-/** Floating dust particles — generated once */
-const DUST_PARTICLES = Array.from({ length: 32 }, (_, i) => ({
+const _isMobileForParticles = matchesQuery(MOBILE_QUERY)
+
+/** Floating dust particles — generated once.
+ *  Mobile: 10 particles instead of 32 (cuts GPU compositing layers). */
+const DUST_PARTICLE_COUNT = _isMobileForParticles ? 10 : 32
+const DUST_PARTICLES = Array.from({ length: DUST_PARTICLE_COUNT }, (_, i) => ({
   id: i,
   left: `${2 + Math.random() * 96}%`,
   top: `${Math.random() * 100}%`,

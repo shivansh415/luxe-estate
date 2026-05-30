@@ -244,6 +244,7 @@ function CenterTextSection() {
     >
       {/* ── Ambient double glow ── */}
       <div
+        className="ambient-glow-blur"
         style={{
           position: 'absolute',
           top: '15%',
@@ -261,6 +262,7 @@ function CenterTextSection() {
         }}
       />
       <div
+        className="ambient-glow-blur"
         style={{
           position: 'absolute',
           bottom: '10%',

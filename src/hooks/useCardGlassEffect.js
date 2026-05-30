@@ -1,4 +1,11 @@
 import { useRef, useEffect, useCallback } from 'react'
+import { isCoarsePointer } from '../utils/mobile'
+
+/* Coarse-pointer status is stable per device session — read once at
+   module load. This lets the hook early-return on mobile without
+   violating the rules of hooks (the hook order is consistent for
+   the lifetime of the component on a given device). */
+const SKIP_GLASS = isCoarsePointer()
 
 /**
  * useCardGlassEffect
@@ -209,6 +216,12 @@ export function useCardGlassEffect(canvasRef, containerRef, imgReady) {
 
   // ONE-TIME WebGL init — runs when thumbnail loads, never re-runs
   useEffect(() => {
+    /* Touch / coarse-pointer devices: skip the entire WebGL init.
+       There's no hover, so the distortion is dead code. This removes
+       up to ~8 WebGL contexts and texture uploads on the mobile home
+       page — critical because mobile context limits start at 8. */
+    if (SKIP_GLASS) return
+
     const canvas = canvasRef.current
     const container = containerRef.current
     if (!canvas || !container || !imgReady || initDoneRef.current) return

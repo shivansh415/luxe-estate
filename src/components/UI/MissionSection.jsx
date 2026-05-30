@@ -312,6 +312,7 @@ function MissionSection() {
     >
       {/* ── Ambient radial glows ── */}
       <div
+        className="ambient-glow-blur"
         style={{
           position: 'absolute',
           top: '10%',
@@ -329,6 +330,7 @@ function MissionSection() {
         }}
       />
       <div
+        className="ambient-glow-blur"
         style={{
           position: 'absolute',
           bottom: '5%',

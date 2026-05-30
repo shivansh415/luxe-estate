@@ -1,4 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react'
+import { isCoarsePointer } from '../utils/mobile'
+
+const SKIP_TOUCH_TRACKING = isCoarsePointer()
 
 /**
  * useCursorLerp
@@ -34,6 +37,15 @@ export function useCursorLerp(lambda = 8) {
   const lastFrameTime = useRef(0)
 
   useEffect(() => {
+    /* Touch / coarse-pointer devices: skip ALL pointer tracking.
+       The marble reveal shader's "isMoving" state is driven by
+       cursor delta; on mobile, finger-drag during scroll would
+       constantly fire reveal animations during normal scrolling
+       and cause visible flicker. The shader's auto-reveal phase
+       (uAutoRevealPhase) provides an idle ambient animation that
+       is plenty atmospheric on its own. */
+    if (SKIP_TOUCH_TRACKING) return
+
     const handleMouseMove = (e) => {
       const prevX = targetRef.current.x
       const prevY = targetRef.current.y
@@ -45,26 +57,10 @@ export function useCursorLerp(lambda = 8) {
       lastMoveTime.current = performance.now()
     }
 
-    const handleTouchMove = (e) => {
-      if (e.touches.length > 0) {
-        const touch = e.touches[0]
-        const prevX = targetRef.current.x
-        const prevY = targetRef.current.y
-        targetRef.current.x = touch.clientX / window.innerWidth
-        targetRef.current.y = 1.0 - (touch.clientY / window.innerHeight)
-        velocityRef.current.x = targetRef.current.x - prevX
-        velocityRef.current.y = targetRef.current.y - prevY
-        isMovingRef.current = true
-        lastMoveTime.current = performance.now()
-      }
-    }
-
     window.addEventListener('mousemove', handleMouseMove, { passive: true })
-    window.addEventListener('touchmove', handleTouchMove, { passive: true })
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('touchmove', handleTouchMove)
     }
   }, [])
 

@@ -19,7 +19,26 @@
     <!-- Preload critical assets -->
     <link rel="preload" href="/textures/marble-generated.png" as="image" />
     <link rel="preload" href="/videos/section-1-reveal.mp4" as="video" type="video/mp4" />
-    <link rel="preload" href="/menu-bg.jpeg" as="image" />
+    <!--
+      menu-bg.jpeg is only visible after the user opens the menu.
+      Preloading it on mobile competes with above-the-fold assets
+      (marble texture + reveal video) on slow networks. Desktop-only
+      preload is injected by index.html below via JS so we don't
+      block the critical path on mobile.
+    -->
+    <script>
+      (function () {
+        try {
+          if (window.matchMedia('(min-width: 769px)').matches) {
+            var l = document.createElement('link');
+            l.rel = 'preload';
+            l.as = 'image';
+            l.href = '/menu-bg.jpeg';
+            document.head.appendChild(l);
+          }
+        } catch (_) {}
+      })();
+    </script>
 
     <style>
       /* Critical CSS - prevents FOUC */
