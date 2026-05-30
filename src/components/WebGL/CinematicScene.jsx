@@ -2,6 +2,7 @@ import { Canvas } from '@react-three/fiber'
 import { Suspense, useMemo, Component, memo } from 'react'
 import MarbleRevealPlane from './MarbleRevealPlane'
 import CinematicPostProcessing from './CinematicPostProcessing'
+import { isMobile } from '../../utils/mobile'
 
 /**
  * WebGLErrorBoundary
@@ -50,13 +51,18 @@ class WebGLErrorBoundary extends Component {
  */
 function CinematicScene({ scrollProgressRef, currentSectionRef, onWebGLProgress }) {
   const dpr = useMemo(() => {
-    const maxDpr = window.innerWidth < 768 ? 1.15 : 1.5
-    return [1, Math.min(window.devicePixelRatio, maxDpr)]
+    /* Mobile: lock DPR to 1.0 — the marble shader is fragment-bound,
+       and even DPR 1.15 doubles fragment work for marginal visual gain.
+       Desktop: cap at 1.5. Never honor 3x retina. */
+    if (isMobile()) return [1, 1]
+    return [1, Math.min(window.devicePixelRatio || 1, 1.5)]
   }, [])
 
   // Memoize GL config to prevent Canvas prop diffing
   const glConfig = useMemo(() => ({
-    antialias: true,
+    /* Antialias is expensive on mobile GPUs and provides marginal value
+       at DPR 1 — the marble shader is the visible surface, not geometry edges. */
+    antialias: !isMobile(),
     alpha: false,
     powerPreference: 'high-performance',
     stencil: false,
@@ -64,6 +70,13 @@ function CinematicScene({ scrollProgressRef, currentSectionRef, onWebGLProgress 
   }), [])
 
   const cameraConfig = useMemo(() => ({ position: [0, 0, 1] }), [])
+
+  /* Mobile auto-degrade floor: if frame time spikes, R3F can lower
+     resolution faster (down to 0.5 of current DPR). */
+  const performanceProfile = useMemo(
+    () => ({ min: isMobile() ? 0.5 : 0.6 }),
+    []
+  )
 
   return (
     <div
@@ -83,7 +96,7 @@ function CinematicScene({ scrollProgressRef, currentSectionRef, onWebGLProgress 
           gl={glConfig}
           dpr={dpr}
           camera={cameraConfig}
-          performance={{ min: 0.6 }}
+          performance={performanceProfile}
           style={{ background: '#0a0a0a' }}
         >
           <Suspense fallback={null}>

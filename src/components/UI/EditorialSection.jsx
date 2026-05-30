@@ -186,6 +186,7 @@ function EditorialSection() {
     >
       {/* Subtle ambient glow */}
       <div
+        className="ambient-glow-blur"
         style={{
           position: 'absolute',
           top: '30%',

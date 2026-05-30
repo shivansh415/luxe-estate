@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react'
 import * as THREE from 'three'
+import { isMobile } from '../utils/mobile'
 
 /**
  * Video paths — one per cinematic section.
@@ -92,39 +93,64 @@ export function useVideoTextures(onFirstVideoReady) {
     return () => tex.dispose()
   }, [])
 
-  // ── Create ONE video + texture per section ──
+  // ── Lazy per-section video creation ──
+  // Desktop: create all 5 up-front (existing behavior, ~19MB but plays smoothly).
+  // Mobile: create ONLY section 0 at mount; others created on demand inside
+  //         `switchToSection`. Cuts initial decode pressure from ~19MB to ~3.7MB.
   useEffect(() => {
-    const entries = []
+    const mobile = isMobile()
+    const entries = new Array(VIDEO_PATHS.length).fill(null)
 
-    VIDEO_PATHS.forEach((path, index) => {
-      const video = createVideoElement(path, index <= 1 ? 'auto' : 'metadata')
+    const createEntry = (index) => {
+      const existing = entries[index]
+      if (existing) return existing
+
+      const path = VIDEO_PATHS[index]
+      // Active + immediate neighbors get 'auto' so they buffer aggressively.
+      // Distant videos use 'metadata' (a few KB only).
+      const preload = index <= 1 ? 'auto' : 'metadata'
+      const video = createVideoElement(path, preload)
       const texture = createVideoTexture(video)
 
-      // Start first section playing immediately
+      const entry = { video, texture }
+      entries[index] = entry
+
+      // Section 0: signal first-video-ready and start playback
       if (index === 0) {
         const handleReady = () => {
           onFirstVideoReadyRef.current?.()
           video.oncanplay = null
           video.oncanplaythrough = null
         }
-
         if (video.readyState >= 3) {
           onFirstVideoReadyRef.current?.()
         } else {
           video.oncanplay = handleReady
           video.oncanplaythrough = handleReady
         }
-
         video.play().catch(() => {})
       }
 
-      entries.push({ video, texture })
-    })
+      return entry
+    }
+
+    // Always create section 0 immediately (it's the active shader video).
+    createEntry(0)
+
+    // Desktop: also create the rest now so transitions are instant.
+    // Mobile: defer — they'll be created lazily by switchToSection.
+    if (!mobile) {
+      for (let i = 1; i < VIDEO_PATHS.length; i += 1) createEntry(i)
+    }
 
     videosRef.current = entries
+    // Stash the lazy creator on the ref so switchToSection can use it.
+    videosRef.current.__create = createEntry
 
     return () => {
-      entries.forEach(({ video, texture }) => {
+      entries.forEach((entry) => {
+        if (!entry) return
+        const { video, texture } = entry
         video.oncanplay = null
         video.oncanplaythrough = null
         video.pause()
@@ -140,13 +166,16 @@ export function useVideoTextures(onFirstVideoReady) {
   const update = useCallback((sectionIndex) => {
     const fallback = fallbackRef.current
     const entries = videosRef.current
-    if (!entries.length || !fallback) {
+    if (!entries || !entries.length || !fallback) {
       return { primary: fallback, blend: fallback, factor: 0 }
     }
 
-    // Wrap the section index to cycle through available videos
     const videoIndex = sectionIndex % entries.length
-    const entry = entries[videoIndex]
+    let entry = entries[videoIndex]
+    // Lazy-create on mobile when a section is reached for the first time.
+    if (!entry && entries.__create) {
+      entry = entries.__create(videoIndex)
+    }
     if (!entry) {
       return { primary: fallback, blend: fallback, factor: 0 }
     }
@@ -160,22 +189,29 @@ export function useVideoTextures(onFirstVideoReady) {
   // playing 3 at once causes software-decode fallback and thermal throttling.
   const switchToSection = useCallback((sectionIndex) => {
     const entries = videosRef.current
-    if (!entries.length) return
-    const activeVideoIndex = sectionIndex % entries.length
+    if (!entries || !entries.length) return
+    const len = entries.length
+    const activeVideoIndex = sectionIndex % len
+
+    // On mobile, lazy-create the active and immediate neighbors so the
+    // user never sees the fallback when scrubbing forward.
+    if (entries.__create) {
+      entries.__create(activeVideoIndex)
+      entries.__create((activeVideoIndex + 1) % len)
+      entries.__create((activeVideoIndex - 1 + len) % len)
+    }
 
     entries.forEach((entry, idx) => {
+      if (!entry) return
       if (idx === activeVideoIndex) {
-        // Play ONLY the active video
         entry.video.preload = 'auto'
         if (entry.video.readyState === 0) entry.video.load()
         entry.video.play().catch(() => {})
       } else if (Math.abs(idx - activeVideoIndex) <= 1) {
-        // Pre-buffer adjacent videos but keep them PAUSED
         entry.video.preload = 'auto'
         if (entry.video.readyState === 0) entry.video.load()
         entry.video.pause()
       } else {
-        // Distant videos: stop buffering to save bandwidth + memory
         entry.video.pause()
         entry.video.preload = 'metadata'
       }

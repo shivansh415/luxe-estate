@@ -736,6 +736,23 @@ body.hover-immersive-active #main-nav .nav-hover-trigger {
    Responsive
    ============================================ */
 
+/* ──────────────────────────────────────────────
+   Mobile Performance: Hide expensive ambient glows
+   ──────────────────────────────────────────────
+   Large-radius CSS blurs (filter: blur(80–120px)) are one of the
+   most expensive paint operations on mobile GPUs. Each blurred
+   layer triggers a multi-pass downsample on every scroll frame
+   when its bounding box overlaps the viewport.
+
+   Decorative ambient-glow divs across the home sections add
+   atmospheric warmth on desktop but are invisible behind the
+   marble texture on mobile. Hide them entirely below 768px. */
+@media (max-width: 768px) {
+  .ambient-glow-blur {
+    display: none !important;
+  }
+}
+
 @media (max-width: 768px) {
   .nav-luxury {
     padding: 1.5rem 1.5rem;
@@ -4677,6 +4694,17 @@ iframe {
     background 0.6s var(--ease-luxury),
     transform 0.5s var(--ease-luxury);
   will-change: transform;
+}
+
+/* Mobile: backdrop-filter blur is one of the most expensive paint
+   operations; the button is only briefly on screen, so drop the blur
+   and use a slightly more opaque background instead. */
+@media (max-width: 768px) {
+  .contact-cta-btn {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(245, 240, 232, 0.06);
+  }
 }
 
 .contact-cta-btn__text {

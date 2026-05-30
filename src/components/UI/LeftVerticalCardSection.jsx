@@ -137,6 +137,7 @@ function LeftVerticalCardSection() {
     >
       {/* Ambient glow — left side */}
       <div
+        className="ambient-glow-blur"
         style={{
           position: 'absolute',
           top: '12%',

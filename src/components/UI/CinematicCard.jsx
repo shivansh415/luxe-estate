@@ -264,6 +264,7 @@ function CinematicCard() {
     >
       {/* ── Ambient background glow ── */}
       <div
+        className="ambient-glow-blur"
         style={{
           position: 'absolute',
           top: '20%',
