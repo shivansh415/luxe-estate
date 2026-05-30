@@ -4,8 +4,16 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useCursorLerp } from '../../hooks/useCursorLerp'
 import { useVideoTextures } from '../../hooks/useVideoTextures'
+import { isMobile } from '../../utils/mobile'
 import vertexShader from '../../shaders/marbleReveal.vert?raw'
-import fragmentShader from '../../shaders/marbleReveal.frag?raw'
+import fragmentShaderSrc from '../../shaders/marbleReveal.frag?raw'
+
+/* Inject `#define MOBILE` at the top of the fragment shader on mobile.
+   The shader's #ifdef MOBILE branches skip the 9-tap Sobel + Voronoi
+   in detectVeins and reduce fBm from 5 octaves to 3. */
+const fragmentShader = isMobile()
+  ? '#define MOBILE\n' + fragmentShaderSrc
+  : fragmentShaderSrc
 
 /**
  * MarbleRevealPlane
