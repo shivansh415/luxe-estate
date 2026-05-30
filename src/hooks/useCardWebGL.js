@@ -1,5 +1,8 @@
 import { useRef, useEffect, useCallback } from 'react'
 import * as THREE from 'three'
+import { isCoarsePointer } from '../utils/mobile'
+
+const SKIP_CARD_WEBGL = isCoarsePointer()
 
 /**
  * useCardWebGL
@@ -45,6 +48,11 @@ export function useCardWebGL(canvasRef, containerRef, shouldLoadVideo) {
   }, [])
 
   useEffect(() => {
+    /* Touch devices: skip the entire Three.js renderer + video
+       texture init. Removes one extra WebGL context per card on
+       mobile, well below the hardware context limit. */
+    if (SKIP_CARD_WEBGL) return
+
     const canvas = canvasRef.current
     const container = containerRef.current
     if (!canvas || !container || !shouldLoadVideo) return

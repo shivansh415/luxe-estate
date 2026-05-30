@@ -1,4 +1,8 @@
 import { useRef, useEffect } from 'react'
+import { isCoarsePointer } from '../../utils/mobile'
+
+/* Read once at module load — coarse pointer is stable per device. */
+const SKIP_HOVER = isCoarsePointer()
 
 /**
  * AtmosphericHover — Stable Immersive Corner Reveal
@@ -186,7 +190,7 @@ void main() {
 }
 `
 
-export default function AtmosphericHover({ isActive }) {
+function AtmosphericHoverImpl({ isActive }) {
   const canvasRef = useRef(null)
   const rafRef = useRef(null)
   const startRef = useRef(null)
@@ -500,4 +504,15 @@ export default function AtmosphericHover({ isActive }) {
       />
     </>
   )
+}
+
+/**
+ * Public wrapper. On touch devices the entire WebGL pipeline is
+ * skipped — there's no hover state, so the canvas, shader, 2.8MB
+ * texture download, and global pointermove listener are all
+ * unnecessary. The "View All Projects" CTA opens the menu via tap.
+ */
+export default function AtmosphericHover(props) {
+  if (SKIP_HOVER) return null
+  return <AtmosphericHoverImpl {...props} />
 }
