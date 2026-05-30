@@ -751,6 +751,28 @@ body.hover-immersive-active #main-nav .nav-hover-trigger {
   .ambient-glow-blur {
     display: none !important;
   }
+
+  /* Tighter nav padding on small screens — base inline padding is
+     2rem 3rem (32px + 48px), which leaves only ~264px of usable
+     width on a 360px screen. Override to keep both the logo and
+     "View All Projects" CTA fully tappable inside the safe area. */
+  #main-nav.site-nav {
+    padding: 1.25rem 1.25rem !important;
+  }
+}
+
+@media (max-width: 380px) {
+  #main-nav.site-nav {
+    padding: 1rem 1rem !important;
+  }
+  #main-nav .nav-brand {
+    font-size: 0.85rem !important;
+    letter-spacing: 0.25em !important;
+  }
+  #main-nav .nav-hover-trigger {
+    font-size: 0.65rem !important;
+    letter-spacing: 0.22em !important;
+  }
 }
 
 @media (max-width: 768px) {
@@ -1498,6 +1520,11 @@ iframe {
 
 .hero-section {
   min-height: 100svh;
+  /* Prevent letter-spaced display type from causing horizontal scroll
+     at very narrow widths (320px) where padding-left + letter-spacing
+     can push the rightmost glyph past the viewport edge. */
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 .hero-tagline,

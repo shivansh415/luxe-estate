@@ -925,9 +925,13 @@ function AboutPage({ onBackToHome, onRequestConsultation, lenisRef }) {
           scrollTrigger: {
             trigger: section,
             start: 'top top',
-            end: isMobile ? '+=220%' : '+=320%',
+            /* Mobile: 140% pin (was 220%). Each frame in the hallway
+               sequence does a 3D z-translate which forces a separate
+               compositing layer per frame; shorter pin = fewer total
+               composite ticks during scroll. */
+            end: isMobile ? '+=140%' : '+=320%',
             pin: true,
-            scrub: isMobile ? 0.4 : 0.5,
+            scrub: isMobile ? 0.25 : 0.5,
             anticipatePin: 0,
           },
         })
