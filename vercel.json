@@ -1,0 +1,37 @@
+{
+  "rewrites": [
+    {
+      "source": "/((?!api/|assets/|videos/|textures/|frames/|timeline/|materials/|overlays/|favicon\\.png|contact-bg\\.png|menu-bg\\.jpeg|project-showcase-bg\\.jpeg|robots\\.txt|sitemap\\.xml).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/(videos|textures|frames|timeline|materials|overlays)/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=2592000"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ]
+}
